@@ -147,18 +147,27 @@
     peer = new Peer(randomCode());
     peer.on('open', id => {
       $('#camCode').textContent = id;
-      $('#camStatus').textContent = 'Taiyar ✓ — viewer me ye code daalo';
+      $('#camStatus').textContent = '🟢 Online — viewer me ye code daalo';
     });
     peer.on('call', call => {
       call.answer(localStream);          // apna camera+mic bhejo
       activeCall = call;
       $('#camStatus').textContent = 'Viewer connect ho gaya ✓';
-      call.on('close', () => $('#camStatus').textContent = 'Viewer chala gaya');
+      call.on('close', () => $('#camStatus').textContent = '🟢 Online — viewer chala gaya');
+    });
+    // broker se connection toot jaye to khud dobara judo (SAME code rehta hai)
+    peer.on('disconnected', () => {
+      $('#camStatus').textContent = '🟡 Server se dobara connect ho raha hai…';
+      try { peer.reconnect(); } catch(e){}
     });
     peer.on('error', e => {
       if(e.type === 'unavailable-id'){    // code already liya hua tha, naya banao
-        peer.destroy(); createCamPeer();
-      }else{
+        try{ peer.destroy(); }catch(_){}
+        createCamPeer();
+      } else if(e.type === 'network' || e.type === 'server-error' || e.type === 'socket-error'){
+        $('#camStatus').textContent = '🔴 Server down — dobara koshish…';
+        setTimeout(() => { try{ peer.reconnect(); }catch(_){ } }, 2000);
+      } else {
         $('#camStatus').textContent = 'Error: ' + e.type;
       }
     });
@@ -191,14 +200,21 @@
   // ---------------- VIEWER MODE ----------------
   function startViewer(){ show('viewer'); $('#codeInput').focus(); }
 
+  let viewRetries = 0;
   function connectViewer(){
     const code = $('#codeInput').value.trim().toUpperCase();
     if(code.length < 4){ $('#viewStatus').textContent = 'Poora code daalo'; return; }
+    if(peer){ try{ peer.destroy(); }catch(_){ } }
+    viewRetries = 0;
     $('#viewStatus').textContent = 'Connect ho raha hai…';
+    tryViewerCall(code);
+  }
+
+  function tryViewerCall(code){
     peer = new Peer();
     peer.on('open', () => {
       const call = peer.call(code, new MediaStream()); // sirf dekhna hai, apna stream nahi
-      if(!call){ $('#viewStatus').textContent = 'Fail — code check karo'; return; }
+      if(!call){ $('#viewStatus').textContent = 'Fail — code dubara daalo'; return; }
       call.on('stream', remote => {
         const v = $('#remoteVideo');
         v.hidden = false;
@@ -207,12 +223,22 @@
         $('#viewStatus').textContent = 'Connected ✓ (awaaz na aaye to video par tap karo)';
       });
       call.on('close', () => $('#viewStatus').textContent = 'Connection band ho gaya');
-      call.on('error', e => $('#viewStatus').textContent = 'Error: ' + e);
+      call.on('error', e => $('#viewStatus').textContent = 'Call error: ' + (e.type || e));
     });
     peer.on('error', e => {
-      $('#viewStatus').textContent = (e.type === 'peer-unavailable')
-        ? 'Ye code online nahi mila — camera phone khula hai?'
-        : 'Error: ' + e.type;
+      if(e.type === 'peer-unavailable'){
+        // code mila nahi — ho sakta broker abhi sync ho raha ho, 3 baar retry karo
+        if(viewRetries < 3){
+          viewRetries++;
+          $('#viewStatus').textContent = 'Camera dhoond rahe hain… (' + viewRetries + '/3)';
+          try{ peer.destroy(); }catch(_){ }
+          setTimeout(() => tryViewerCall(code), 1500);
+        } else {
+          $('#viewStatus').textContent = 'Code nahi mila. Camera phone par "🟢 Online" dikh raha hai? Code bilkul wahi hai? Dono phone net par hain?';
+        }
+      } else {
+        $('#viewStatus').textContent = 'Error: ' + e.type;
+      }
     });
   }
 
