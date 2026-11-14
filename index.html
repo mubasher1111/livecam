@@ -107,14 +107,16 @@
   const $ = s => document.querySelector(s);
   let peer, localStream, activeCall = null, currentFacing = 'environment', wakeLock = null;
 
-  // ICE servers: STUN (public IP dhoondne ke liye) + TURN (relay, jab direct na bane).
-  // TURN free public relay hai — alag network / mobile data par bhi connection banta hai.
+  // ICE servers: STUN se dono phone apna pata dhoondhte hain.
+  // Dono phone EK HI network (ek hotspot / ek WiFi) par hon to seedha connect ho jata hai.
+  // Alag network ke liye yahan ek TURN relay chahiye hoga (niche README me bataya hai).
   const PEEROPTS = { config: { iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'turn:openrelay.metered.ca:80',  username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+    { urls: 'stun:stun2.l.google.com:19302' }
+    /* TURN (alag network ke liye) — Metered free account se bhar do:
+    ,{ urls: 'turn:XXXX', username: 'YYYY', credential: 'ZZZZ' }
+    */
   ] } };
 
   function show(id){ ['home','camera','viewer'].forEach(x => $('#'+x).hidden = (x!==id)); }
