@@ -112,11 +112,11 @@
   // Alag network ke liye yahan ek TURN relay chahiye hoga (niche README me bataya hai).
   const PEEROPTS = { config: { iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
-    /* TURN (alag network ke liye) — Metered free account se bhar do:
-    ,{ urls: 'turn:XXXX', username: 'YYYY', credential: 'ZZZZ' }
-    */
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    { urls: 'turn:global.relay.metered.ca:80',               username: '55dd4d7eb13fd368206c5039', credential: 'FYStZ+xuRYS0ntyt' },
+    { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: '55dd4d7eb13fd368206c5039', credential: 'FYStZ+xuRYS0ntyt' },
+    { urls: 'turn:global.relay.metered.ca:443',              username: '55dd4d7eb13fd368206c5039', credential: 'FYStZ+xuRYS0ntyt' },
+    { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: '55dd4d7eb13fd368206c5039', credential: 'FYStZ+xuRYS0ntyt' }
   ] } };
 
   function show(id){ ['home','camera','viewer'].forEach(x => $('#'+x).hidden = (x!==id)); }
