@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LiveCam</title>
+<meta name="theme-color" content="#0b0d10">
+<link rel="manifest" href="manifest.json">
+<style>
+  :root{
+    --bg:#0b0d10; --panel:#15191f; --fg:#eef2f6; --muted:#9aa5b1;
+    --accent:#3ddc97; --accent2:#2b8cff; --danger:#ff5a5a; --line:#242b33;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right))
+            max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));}
+  h1{font-size:1.5rem;margin:.2rem 0 .1rem}
+  .sub{color:var(--muted);font-size:.95rem;margin:0 0 1.4rem}
+  .wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;min-height:100%}
+  [hidden]{display:none!important}
+
+  .big-btn{display:flex;align-items:center;gap:14px;width:100%;padding:20px;
+    border:1px solid var(--line);border-radius:16px;background:var(--panel);
+    color:var(--fg);font-size:1.15rem;font-weight:600;cursor:pointer;margin-bottom:14px;text-align:left}
+  .big-btn .emoji{font-size:1.8rem}
+  .big-btn small{display:block;font-weight:400;color:var(--muted);font-size:.85rem;margin-top:3px}
+  .big-btn:active{transform:scale(.99)}
+
+  video{width:100%;border-radius:14px;background:#000;aspect-ratio:3/4;object-fit:cover}
+  #remoteVideo{aspect-ratio:9/16}
+
+  .code-box{background:var(--panel);border:1px dashed var(--accent);border-radius:14px;
+    padding:16px;text-align:center;margin:14px 0}
+  .code-box .label{color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.08em}
+  .code{font-size:2.4rem;font-weight:700;letter-spacing:.12em;color:var(--accent);margin-top:4px;
+    font-family:ui-monospace,Menlo,Consolas,monospace}
+
+  .row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  .btn{flex:1;min-width:120px;padding:14px;border-radius:12px;border:1px solid var(--line);
+    background:var(--panel);color:var(--fg);font-size:1rem;font-weight:600;cursor:pointer}
+  .btn.primary{background:var(--accent);color:#06281c;border-color:var(--accent)}
+  .btn.danger{background:transparent;color:var(--danger);border-color:var(--danger)}
+
+  input{width:100%;padding:16px;border-radius:12px;border:1px solid var(--line);
+    background:var(--panel);color:var(--fg);font-size:1.4rem;text-align:center;
+    letter-spacing:.15em;text-transform:uppercase;font-family:ui-monospace,monospace}
+  .status{color:var(--muted);text-align:center;margin-top:12px;min-height:1.2em;font-size:.95rem}
+  .back{background:none;border:none;color:var(--muted);font-size:1rem;cursor:pointer;padding:8px 0;margin-bottom:6px;align-self:flex-start}
+  .foot{color:var(--muted);font-size:.78rem;text-align:center;margin-top:auto;padding-top:20px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HOME -->
+  <section id="home">
+    <h1>LiveCam</h1>
+    <p class="sub">Ek phone camera, doosra viewer. Code daalo, connect. Internet par chalta hai.</p>
+    <button class="big-btn" onclick="startCamera()">
+      <span class="emoji">📷</span>
+      <span>Camera banao<small>Is phone ka camera + mike stream karo</small></span>
+    </button>
+    <button class="big-btn" onclick="startViewer()">
+      <span class="emoji">👁️</span>
+      <span>Dekho (Viewer)<small>Doosre phone ka live camera dekho</small></span>
+    </button>
+    <p class="foot">Sirf apne devices aur apni jagah par use karo.<br>Kisi ko bina bataye record karna galat hai.</p>
+  </section>
+
+  <!-- CAMERA -->
+  <section id="camera" hidden>
+    <button class="back" onclick="goHome()">← Back</button>
+    <video id="camPreview" autoplay playsinline muted></video>
+    <div class="code-box">
+      <div class="label">Viewer me ye code daalo</div>
+      <div class="code" id="camCode">…</div>
+    </div>
+    <div class="row">
+      <button class="btn" onclick="switchCam()">🔄 Camera badlo</button>
+      <button class="btn" id="muteBtn" onclick="toggleMute()">🔇 Mic mute</button>
+    </div>
+    <div class="row">
+      <button class="btn danger" onclick="goHome()">⏹ Stop</button>
+    </div>
+    <p class="status" id="camStatus">Camera shuru ho raha hai…</p>
+  </section>
+
+  <!-- VIEWER -->
+  <section id="viewer" hidden>
+    <button class="back" onclick="goHome()">← Back</button>
+    <h1 style="font-size:1.2rem">Code daalo</h1>
+    <input id="codeInput" placeholder="ABC123" maxlength="8" autocomplete="off">
+    <div class="row">
+      <button class="btn primary" onclick="connectViewer()">Connect</button>
+    </div>
+    <video id="remoteVideo" autoplay playsinline style="margin-top:14px" hidden></video>
+    <p class="status" id="viewStatus"></p>
+  </section>
+
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+  const $ = s => document.querySelector(s);
+  let peer, localStream, activeCall = null, currentFacing = 'environment', wakeLock = null;
+
+  function show(id){ ['home','camera','viewer'].forEach(x => $('#'+x).hidden = (x!==id)); }
+
+  function goHome(){
+    if(peer){ peer.destroy(); peer = null; }
+    if(localStream){ localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+    activeCall = null;
+    releaseWake();
+    show('home');
+  }
+
+  // ---------------- CAMERA MODE ----------------
+  function randomCode(){
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // confusing letters hata diye
+    let s = ''; for(let i=0;i<6;i++) s += chars[Math.floor(Math.random()*chars.length)];
+    return s;
+  }
+
+  async function getCamStream(){
+    return navigator.mediaDevices.getUserMedia({
+      video: { facingMode: currentFacing }, audio: true
+    });
+  }
+
+  async function startCamera(){
+    show('camera');
+    try{
+      localStream = await getCamStream();
+    }catch(e){
+      $('#camStatus').textContent = 'Camera/mic nahi mila: ' + e.message;
+      return;
+    }
+    $('#camPreview').srcObject = localStream;
+    requestWake();
+    createCamPeer();
+  }
+
+  function createCamPeer(){
+    peer = new Peer(randomCode());
+    peer.on('open', id => {
+      $('#camCode').textContent = id;
+      $('#camStatus').textContent = 'Taiyar ✓ — viewer me ye code daalo';
+    });
+    peer.on('call', call => {
+      call.answer(localStream);          // apna camera+mic bhejo
+      activeCall = call;
+      $('#camStatus').textContent = 'Viewer connect ho gaya ✓';
+      call.on('close', () => $('#camStatus').textContent = 'Viewer chala gaya');
+    });
+    peer.on('error', e => {
+      if(e.type === 'unavailable-id'){    // code already liya hua tha, naya banao
+        peer.destroy(); createCamPeer();
+      }else{
+        $('#camStatus').textContent = 'Error: ' + e.type;
+      }
+    });
+  }
+
+  async function switchCam(){
+    currentFacing = (currentFacing === 'environment') ? 'user' : 'environment';
+    const old = localStream;
+    try{
+      localStream = await getCamStream();
+    }catch(e){ localStream = old; $('#camStatus').textContent = 'Switch fail: '+e.message; return; }
+    $('#camPreview').srcObject = localStream;
+    // agar viewer juda hua hai to uska video track replace karo (bina reconnect)
+    if(activeCall && activeCall.peerConnection){
+      const vTrack = localStream.getVideoTracks()[0];
+      const sender = activeCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+      if(sender && vTrack) sender.replaceTrack(vTrack);
+    }
+    if(old) old.getTracks().forEach(t => t.stop());
+  }
+
+  function toggleMute(){
+    if(!localStream) return;
+    const a = localStream.getAudioTracks()[0];
+    if(!a) return;
+    a.enabled = !a.enabled;
+    $('#muteBtn').textContent = a.enabled ? '🔇 Mic mute' : '🔊 Mic on';
+  }
+
+  // ---------------- VIEWER MODE ----------------
+  function startViewer(){ show('viewer'); $('#codeInput').focus(); }
+
+  function connectViewer(){
+    const code = $('#codeInput').value.trim().toUpperCase();
+    if(code.length < 4){ $('#viewStatus').textContent = 'Poora code daalo'; return; }
+    $('#viewStatus').textContent = 'Connect ho raha hai…';
+    peer = new Peer();
+    peer.on('open', () => {
+      const call = peer.call(code, new MediaStream()); // sirf dekhna hai, apna stream nahi
+      if(!call){ $('#viewStatus').textContent = 'Fail — code check karo'; return; }
+      call.on('stream', remote => {
+        const v = $('#remoteVideo');
+        v.hidden = false;
+        v.srcObject = remote;
+        v.play().catch(()=>{});
+        $('#viewStatus').textContent = 'Connected ✓ (awaaz na aaye to video par tap karo)';
+      });
+      call.on('close', () => $('#viewStatus').textContent = 'Connection band ho gaya');
+      call.on('error', e => $('#viewStatus').textContent = 'Error: ' + e);
+    });
+    peer.on('error', e => {
+      $('#viewStatus').textContent = (e.type === 'peer-unavailable')
+        ? 'Ye code online nahi mila — camera phone khula hai?'
+        : 'Error: ' + e.type;
+    });
+  }
+
+  // tap remote video to (re)start audio if browser blocked autoplay
+  document.addEventListener('DOMContentLoaded', () => {
+    $('#remoteVideo').addEventListener('click', () => $('#remoteVideo').play().catch(()=>{}));
+  });
+
+  // ---------------- screen awake (camera chalti rahe) ----------------
+  async function requestWake(){
+    try{ if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); }catch(e){}
+  }
+  function releaseWake(){ try{ if(wakeLock){ wakeLock.release(); wakeLock = null; } }catch(e){} }
+
+  // ---------------- PWA (install like app) ----------------
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }
+</script>
+</body>
+</html>
