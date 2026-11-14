@@ -161,11 +161,16 @@
       $('#camCode').textContent = id;
       $('#camStatus').textContent = '🟢 Online — viewer me ye code daalo';
     });
-    peer.on('call', call => {
-      call.answer(localStream);          // apna camera+mic bhejo
-      activeCall = call;
-      $('#camStatus').textContent = 'Viewer connect ho gaya ✓';
-      call.on('close', () => $('#camStatus').textContent = '🟢 Online — viewer chala gaya');
+    // Viewer ek data-connection se apna id bhejta hai; phir HUM use apni
+    // camera+mic ke saath call karte hain (is direction me video pakka chalti hai).
+    peer.on('connection', conn => {
+      conn.on('open', () => {
+        const call = peer.call(conn.peer, localStream);
+        activeCall = call;
+        $('#camStatus').textContent = 'Viewer connect ho gaya ✓';
+        call.on('close', () => $('#camStatus').textContent = '🟢 Online — viewer chala gaya');
+        call.on('error', () => {});
+      });
     });
     // broker se connection toot jaye to khud dobara judo (SAME code rehta hai)
     peer.on('disconnected', () => {
@@ -226,10 +231,10 @@
   function tryViewerCall(code){
     gotStream = false;
     peer = new Peer(undefined, PEEROPTS);
-    peer.on('open', () => {
-      $('#viewStatus').textContent = 'Camera se judh rahe hain… (video laane me 5–10 sec lag sakte hain)';
-      const call = peer.call(code, new MediaStream()); // sirf dekhna hai, apna stream nahi
-      if(!call){ $('#viewStatus').textContent = 'Fail — code dubara daalo'; return; }
+
+    // Camera HUMEIN call karega (apni video ke saath) — hum sirf answer karke dekhte hain
+    peer.on('call', call => {
+      call.answer();                       // apna stream nahi, sirf receive
       call.on('stream', remote => {
         gotStream = true;
         const v = $('#remoteVideo');
@@ -241,6 +246,18 @@
       call.on('close', () => { if(gotStream) $('#viewStatus').textContent = 'Connection band ho gaya'; });
       call.on('error', e => { if(!gotStream) $('#viewStatus').textContent = 'Call error: ' + (e.type || e); });
     });
+
+    peer.on('open', () => {
+      $('#viewStatus').textContent = 'Camera se judh rahe hain…';
+      const conn = peer.connect(code);     // data channel: camera ko hamara id milega
+      conn.on('open', () => $('#viewStatus').textContent = 'Camera mil gaya — video aa rahi hai… (5–10 sec)');
+      conn.on('error', () => {});
+      // 15 sec me video na aaye to madad wala message
+      setTimeout(() => {
+        if(!gotStream) $('#viewStatus').textContent = 'Video nahi aa rahi. Dono phone same hotspot + internet par? Camera par 🟢 Online? Dubara Connect dabao.';
+      }, 15000);
+    });
+
     // broker se blip ho to chup-chaap dobara judo
     peer.on('disconnected', () => { try{ peer.reconnect(); }catch(_){ } });
     peer.on('error', e => {
